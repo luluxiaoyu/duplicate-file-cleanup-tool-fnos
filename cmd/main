@@ -16,7 +16,7 @@ stage="准备应用数据目录"
 on_exit() {
     result=$?
     if [ "$result" -ne 0 ] && [ "${1:-}" = start ]; then
-        report "启动失败（阶段：$stage，退出码：$result）。服务日志：$log_file"
+        report "启动失败（阶段：${stage}，退出码：${result}）。服务日志：$log_file"
     fi
 }
 trap 'on_exit "${1:-}"' 0
@@ -60,7 +60,7 @@ case "${1:-}" in
             if ready; then exit 0; fi
             if ! kill -0 "$child" 2>/dev/null; then
                 result=0; wait "$child" || result=$?
-                report "后端程序已退出（退出码：$result），请查看 $log_file"
+                report "后端程序已退出（退出码：${result}），请查看 $log_file"
                 exit 1
             fi
             count=$((count + 1)); sleep 0.2
