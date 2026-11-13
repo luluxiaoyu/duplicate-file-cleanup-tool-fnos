@@ -1,18 +1,34 @@
 #!/bin/sh
 set -eu
 umask 077
-: "${TRIM_APPDEST:?}" "${TRIM_PKGVAR:?}"
+report() {
+    printf '%s\n' "$1" >&2
+    if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then printf '%s\n' "$1" >> "$TRIM_TEMP_LOGFILE" || :; fi
+}
+if [ -z "${TRIM_APPDEST:-}" ] || [ -z "${TRIM_PKGVAR:-}" ]; then
+    report "缺少应用中心运行目录变量 TRIM_APPDEST / TRIM_PKGVAR"; exit 1
+fi
 binary="$TRIM_APPDEST/bin/duplicate-cleanup"
 pid_file="$TRIM_PKGVAR/server.pid"
 ready_file="$TRIM_PKGVAR/server.ready"
 log_file="$TRIM_PKGVAR/server.log"
+stage="准备应用数据目录"
+on_exit() {
+    result=$?
+    if [ "$result" -ne 0 ] && [ "${1:-}" = start ]; then
+        report "启动失败（阶段：$stage，退出码：$result）。服务日志：$log_file"
+    fi
+}
+trap 'on_exit "${1:-}"' 0
 mkdir -p "$TRIM_PKGVAR"
+if [ "${1:-}" = start ]; then
+    # Keep shell diagnostics even when the daemon exits before it can log anything.
+    exec 2>>"$TRIM_PKGVAR/lifecycle.log"
+    printf '\n--- start %s uid=%s ---\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$(id -u)" >&2
+fi
+stage="获取生命周期锁"
 exec 9>"$TRIM_PKGVAR/control.lock"
 flock -x 9
-report() {
-    printf '%s\n' "$1" >&2
-    if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then printf '%s\n' "$1" >> "$TRIM_TEMP_LOGFILE"; fi
-}
 running() {
     pid=
     [ -f "$pid_file" ] && IFS= read -r pid < "$pid_file" || return 1
@@ -27,20 +43,30 @@ case "${1:-}" in
     start)
         if ready; then exit 0; fi
         if running; then report "清理工具服务正在启动"; exit 1; fi
+        stage="检查后端程序"
+        if [ ! -x "$binary" ]; then report "后端程序不存在或不可执行：$binary"; exit 1; fi
+        stage="进入应用安装目录"
+        cd "$TRIM_APPDEST"
         rm -f "$pid_file" "$ready_file"
         # Bound the diagnostic log without touching task records.
         if [ -f "$log_file" ] && [ "$(wc -c < "$log_file")" -gt 5242880 ]; then mv -f "$log_file" "$log_file.previous"; fi
+        stage="启动后端程序"
+        printf 'launch %s\n' "$binary" >&2
         nohup "$binary" 9>&- </dev/null >>"$log_file" 2>&1 &
         child=$!
         printf '%s\n' "$child" > "$pid_file"
         count=0
         while [ "$count" -lt 150 ]; do
             if ready; then exit 0; fi
-            if ! kill -0 "$child" 2>/dev/null; then break; fi
+            if ! kill -0 "$child" 2>/dev/null; then
+                result=0; wait "$child" || result=$?
+                report "后端程序已退出（退出码：$result），请查看 $log_file"
+                exit 1
+            fi
             count=$((count + 1)); sleep 0.2
         done
         if running; then kill -TERM "$pid" 2>/dev/null || :; fi
-        report "清理工具启动失败，请检查应用日志和数据目录权限"; exit 1
+        report "清理工具启动超时，请查看 $log_file"; exit 1
         ;;
     stop)
         if running; then

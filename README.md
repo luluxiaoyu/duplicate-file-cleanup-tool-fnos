@@ -67,4 +67,8 @@ node scripts/build_fpk.mjs arm64 .build/arm64
 
 详细设备验收步骤及当前验证情况见 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)。首版最低 API 版本为 fnOS 1.2.0401，宿主 App 1.34.0；是否可上架以 x86 与 ARM 安装运行实测为准，构建通过不代表已经完成设备验收。
 
+启用失败时检查 `/var/apps/duplicate-file-cleanup-tool-fnos/var/lifecycle.log`（启动脚本阶段与进程退出码）和同目录 `server.log`（服务输出）。即使服务尚未输出日志，脚本失败阶段也会写入应用中心临时日志。启动时显式进入安装目录，后端内容根同样固定为安装目录，避免继承不可访问的工作目录。
+
+包图标和入口图标统一从 `scripts/icon.svg` 导出，保留透明边缘和圆角底层。重新导出命令见 `scripts/render_icons.mjs`，不要另用矩形绘图覆盖 SVG 的圆角。
+
 参考：[飞牛开发指南](https://developer.fnnas.com/docs/guide/)、[个人授权 API](https://developer.fnnas.com/api/authorization/user-access/)、[开发 skill](https://github.com/FNOSP/fnos-developer-skill/blob/main/SKILL.md)、[FIDEDUPERANGE](https://man7.org/linux/man-pages/man2/fideduperange.2const.html)、[FIEMAP](https://docs.kernel.org/filesystems/fiemap.html)。

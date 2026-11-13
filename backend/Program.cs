@@ -10,7 +10,8 @@ File.SetUnixFileMode(paths.Data, UnixFileMode.UserRead | UnixFileMode.UserWrite 
 using var instance = new FileStream(Path.Combine(paths.Data, "instance.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
 var socket = Path.Combine(paths.Target, "app.sock");
 if (File.Exists(socket)) File.Delete(socket);
-var builder = WebApplication.CreateSlimBuilder(args);
+// App Center's inherited working directory is not necessarily readable by the package user.
+var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { Args = args, ContentRootPath = paths.Target });
 builder.Logging.ClearProviders(); builder.Logging.AddSimpleConsole(o => o.SingleLine = true);
 builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 builder.WebHost.ConfigureKestrel(o => { o.ListenUnixSocket(socket); o.Limits.MaxRequestBodySize = 1024 * 1024; });
@@ -57,7 +58,7 @@ static string Language(HttpContext c) => c.Request.Headers["X-App-Language"].ToS
 
 var api = app.MapGroup(AppInfo.Prefix + "/api");
 api.MapGet("/me", (HttpContext c) => User(c));
-api.MapGet("/health", () => new HealthResponse("ok", "0.1.0"));
+api.MapGet("/health", () => new HealthResponse("ok", "0.1.1"));
 api.MapGet("/folders", async (HttpContext c, IAuthority authority, AccessGuard guard, CancellationToken ct) =>
 {
     var roots = await authority.Roots(User(c).Uid, ct); var result = new List<FolderInfo>();
@@ -78,7 +79,7 @@ api.MapPost("/folders/revoke", async (PathRequest r, HttpContext c, IAuthority a
 {
     var roots = await authority.Roots(User(c).Uid, ct); var path = Paths.Normalize(r.Path);
     if (!roots.Contains(path)) throw new AppError("目录不在当前用户授权中", 403);
-    await authority.Revoke(User(c).Uid, path, ct); return new HealthResponse("ok", "0.1.0");
+    await authority.Revoke(User(c).Uid, path, ct); return new HealthResponse("ok", "0.1.1");
 });
 api.MapPost("/scans", async (ScanRequest r, HttpContext c, TaskRunner runner, CancellationToken ct) => await runner.Scan(User(c).Uid, r, ct));
 api.MapPost("/cleanups/preview", async (CleanupRequest r, HttpContext c, TaskRunner runner, Cleaner cleaner, CancellationToken ct) => await cleaner.Preview(runner.RequireScan(User(c).Uid, r.ScanId), r, ct));
@@ -97,7 +98,7 @@ api.MapPost("/scans/{id}/draft", async (string id, CleanupRequest r, HttpContext
     if (r.ScanId != id || r.Choices.Length > 1000) throw new AppError("选择记录无效");
     using var db = store.Db(id); TaskStore.Sql(db.Connection, "CREATE TABLE IF NOT EXISTS draft(id INTEGER PRIMARY KEY,json TEXT NOT NULL)");
     TaskStore.Sql(db.Connection, "INSERT INTO draft VALUES(1,$json) ON CONFLICT(id) DO UPDATE SET json=excluded.json", ("$json", JsonSerializer.Serialize(r, AppJson.Default.CleanupRequest)));
-    return new HealthResponse("ok", "0.1.0");
+    return new HealthResponse("ok", "0.1.1");
 });
 api.MapPost("/trash/tasks", async (TrashRequest r, HttpContext c, TaskRunner runner, CancellationToken ct) => await runner.Trash(User(c).Uid, r, ct));
 api.MapGet("/tasks", async (HttpContext c, AccessGuard guard, CancellationToken ct) =>

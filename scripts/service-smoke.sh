@@ -3,25 +3,33 @@ set -euo pipefail
 publish_dir=$(cd "${1:?Pass the Linux AOT publish directory}" && pwd)
 web_dir=$(cd "${2:?Pass the frontend dist directory}" && pwd)
 work=$(mktemp -d /tmp/duplicate-service-smoke.XXXXXX)
-child=
+control="$(cd "$(dirname "$0")/../cmd" && pwd)/main"
+started=false
+app_control() {
+    # App Center passes symlinked paths and can inherit a root-only working directory.
+    (cd "$work/root-only"; runuser -u nobody -- env TRIM_APPDEST="$work/app/target" TRIM_PKGVAR="$work/app/var" \
+        TRIM_TEMP_LOGFILE="$work/data/appcenter.log" "$control" "$@")
+}
 cleanup() {
-    if [ -n "$child" ]; then kill -TERM "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; fi
+    if [ "$started" = true ]; then app_control stop || true; fi
     rm -rf "$work"
 }
 trap cleanup EXIT
-mkdir "$work/target" "$work/data"
+mkdir "$work/target" "$work/data" "$work/app" "$work/root-only"
+ln -s "$work/target" "$work/app/target"
+ln -s "$work/data" "$work/app/var"
 cp -R "$publish_dir" "$work/target/bin"
 cp -R "$web_dir" "$work/target/www"
 chown -R nobody "$work"
 chmod 755 "$work"
-runuser -u nobody -- env TRIM_APPDEST="$work/target" TRIM_PKGVAR="$work/data" \
-    "$work/target/bin/duplicate-cleanup" >"$work/service.log" 2>&1 &
-child=$!
-for i in $(seq 1 100); do
-    [ -f "$work/data/server.ready" ] && break
-    sleep 0.1
-done
-[ -f "$work/data/server.ready" ] || { cat "$work/service.log"; exit 1; }
+chown root "$work/root-only"
+chmod 700 "$work/root-only"
+started=true
+app_control start || { cat "$work/data/server.log" "$work/data/appcenter.log"; exit 1; }
+app_control status
+first_pid=$(cat "$work/data/server.pid")
+app_control start
+[ "$(cat "$work/data/server.pid")" = "$first_pid" ]
 base=http://localhost/app/duplicate-file-cleanup-tool-fnos/api
 status=$(curl -sS --unix-socket "$work/target/app.sock" -o "$work/body" -w '%{http_code}' "$base/health")
 [ "$status" = 401 ]
@@ -35,3 +43,20 @@ status=$(curl -sS --unix-socket "$work/target/app.sock" -H 'X-Trim-Userid: 1000'
 status=$(curl -sS --unix-socket "$work/target/app.sock" -H 'X-Trim-Userid: 1000' -o "$work/body" -w '%{http_code}' "$base/folders")
 [ "$status" = 503 ] # fnOS socket/token unavailable: fail closed, never return arbitrary roots.
 echo 'PASS AOT daemon startup, UDS, identity, CSRF, JSON and missing-platform refusal'
+app_control stop
+status=0; app_control status || status=$?
+[ "$status" = 3 ]
+app_control stop
+app_control start
+[ "$(cat "$work/data/server.pid")" != "$first_pid" ]
+app_control stop
+started=false
+mv "$work/target/bin/duplicate-cleanup" "$work/target/bin/duplicate-cleanup.saved"
+if app_control start; then echo 'Missing binary unexpectedly started'; exit 1; fi
+grep -q '后端程序不存在或不可执行' "$work/data/appcenter.log"
+printf '#!/bin/sh\nexit 42\n' > "$work/target/bin/duplicate-cleanup"
+chmod 755 "$work/target/bin/duplicate-cleanup"
+if app_control start; then echo 'Failed binary unexpectedly started'; exit 1; fi
+grep -q '退出码：42' "$work/data/appcenter.log"
+grep -q '退出码：42' "$work/data/lifecycle.log"
+echo 'PASS package lifecycle start, status, repeat start, stop, restart and startup failure reporting'
