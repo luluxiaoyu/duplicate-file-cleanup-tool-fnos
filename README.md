@@ -47,6 +47,8 @@ node scripts/build_fpk.mjs arm64 .build/arm64
 
 脚本沿用端口转发应用的 FPK 外层／app.tgz 结构，并检查 AOT 主程序和 SQLite 原生库的 ELF 架构。生成两个独立 FPK，manifest 分别声明 x86/arm，附 SHA-256。推送分支构建 artifacts，推送 `v0.1.0` 等合法版本标签发布两个包。
 
+在 [Actions](https://github.com/luluxiaoyu/duplicate-file-cleanup-tool-fnos/actions/workflows/dev.yml) 打开成功的 Dev 运行，在 Artifacts 下载 `duplicate-cleanup-amd64` 或 `duplicate-cleanup-arm64`，解压后安装其中的 FPK。也可点击 Run workflow 手动构建。Release 工作流在推送版本标签后构建并发布两种架构的 FPK 和校验文件；应先完成设备验收再创建正式版本标签。
+
 如使用官方 fnpack：将对应 publish 目录内容放入暂存包的 `app/bin/`，前端 dist 放入 `app/www/`，设置对应 platform，再执行 `fnpack build --directory <暂存包目录>`。不要把开发目录直接打包为可运行安装包。
 
 ## 数据与恢复

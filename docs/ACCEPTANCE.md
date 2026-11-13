@@ -2,14 +2,17 @@
 
 ## 当前状态
 
-源码实现不等于上架验收。此开发主机为 macOS，真实 Linux ioctl、两种 FPK 安装和飞牛宿主授权必须按下面矩阵在 CI 与 NAS 上验证；没有记录的项目一律视为未验证。
+源码实现不等于上架验收。此开发主机为 macOS；Linux 原生行为通过双架构 CI 验证，FPK 安装和飞牛宿主授权仍需在 NAS 上按下面矩阵验证。没有记录的项目一律视为未验证。
 
 本地已经通过：9 组通用后端测试、同组测试的 macOS ARM64 Native AOT 发布及运行（含真实 SQLite 原生库）、前端 TypeScript／生产构建、3 项 API／统计显示测试和 3 项无头 Chrome 流程测试。前端依赖审计无已知漏洞，干净源码导出通过 fnOS skill 启发式检查。浏览器测试使用模拟接口，截图不是 NAS 实机验收证据。
 
+2026-11-13，[Dev 构建 #3](https://github.com/luluxiaoyu/duplicate-file-cleanup-tool-fnos/actions/runs/43401871363) 在原生 x64 和 ARM64 Linux 上分别运行 Native AOT 测试；每种架构在 ext4、Btrfs 上均为 11 组通过、0 失败。测试进程以 nobody 运行，覆盖实际查重、清理、区块合并和操作日志恢复。实际 AOT 服务的 UDS、身份、CSRF、JSON 及缺失宿主配置拒绝启动检查通过，两个 FPK 及 SHA-256 均已上传。对应源码提交为 `38c19080d598a622ef57e9639bb157b9b8169763`。
+
 | 项目 | x86 | ARM64 |
 |---|---|---|
-| Linux AOT 发布、SQLite 加载 | 待工作流执行 | 待工作流执行 |
-| 非 root ext4 / Btrfs 原生测试 | 待工作流执行 | 待工作流执行 |
+| Linux AOT 发布、SQLite 加载 | CI 通过 | CI 通过 |
+| 非 root ext4 / Btrfs 原生测试 | 各 11 组通过 | 各 11 组通过 |
+| 实际服务启动、UDS 与 FPK 构建 | CI 通过 | CI 通过 |
 | fnOS 首次安装、入口和网关 | 待设备验收 | 待设备验收 |
 | 普通用户个人授权与 ACL | 待设备验收 | 待设备验收 |
 | 三种清理方式、恢复、空间统计 | 待设备验收 | 待设备验收 |
