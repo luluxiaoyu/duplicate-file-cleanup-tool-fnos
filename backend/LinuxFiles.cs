@@ -31,6 +31,20 @@ internal static partial class LibC
     [LibraryImport("libc")] internal static partial uint geteuid();
 }
 
+internal static class LinuxOpenFlags
+{
+    // AArch64 overrides these two values in arch/arm64/include/uapi/asm/fcntl.h.
+    internal static readonly int Directory = RuntimeInformation.ProcessArchitecture switch
+    {
+        Architecture.Arm64 => 1 << 14,
+        Architecture.X64 => 1 << 16,
+        _ => throw new PlatformNotSupportedException("仅支持 x64 和 ARM64")
+    };
+    internal static readonly int NoFollow = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? 1 << 15 : 1 << 17;
+    internal const int CloseOnExec = 1 << 19;
+    internal static readonly int SecureDirectory = Directory | NoFollow | CloseOnExec;
+}
+
 public static class Paths
 {
     public static string Normalize(string path)
@@ -56,7 +70,7 @@ public static class Paths
 // Directory descriptors, not checked strings, anchor subsequent mutations.
 public sealed class SecureRoot : IDisposable
 {
-    const int DirectoryFlags = 0x10000 | 0x20000 | 0x80000;
+    static readonly int DirectoryFlags = LinuxOpenFlags.SecureDirectory;
     public SafeFileHandle Handle { get; }
     public string Path { get; }
     public ulong MountId { get; }
@@ -81,7 +95,7 @@ public sealed class SecureRoot : IDisposable
     {
         if (relative == "") return LinuxFiles.CheckedHandle(LibC.openat(LinuxFiles.Fd(Handle), ".", DirectoryFlags, 0));
         using var parent = Parent(relative, out var name);
-        var flags = 0x20000 | 0x80000 | 0x800 | (directory ? 0x10000 : 0) | (writable ? 2 : 0);
+        var flags = LinuxOpenFlags.NoFollow | LinuxOpenFlags.CloseOnExec | 0x800 | (directory ? LinuxOpenFlags.Directory : 0) | (writable ? 2 : 0);
         var handle = LinuxFiles.CheckedHandle(LibC.openat(LinuxFiles.Fd(parent), name, flags, 0));
         try
         {
@@ -150,7 +164,7 @@ public sealed class SecureRoot : IDisposable
     public void WriteNew(string relative, byte[] bytes)
     {
         using var parent = Parent(relative, out var name);
-        using var f = LinuxFiles.CheckedHandle(LibC.openat(LinuxFiles.Fd(parent), name, 0x80000 | 0x20000 | 0x40 | 0x80 | 1, 0x180));
+        using var f = LinuxFiles.CheckedHandle(LibC.openat(LinuxFiles.Fd(parent), name, LinuxOpenFlags.CloseOnExec | LinuxOpenFlags.NoFollow | 0x40 | 0x80 | 1, 0x180));
         RandomAccess.Write(f, bytes, 0); LinuxFiles.Sync(f); LinuxFiles.Sync(parent);
     }
     public void Dispose() => Handle.Dispose();
@@ -170,7 +184,7 @@ public static unsafe class LinuxFiles
     {
         // App Center paths may themselves be symlinks. This helper is only for trusted app-owned
         // metadata directories; user file operations always use SecureRoot and O_NOFOLLOW.
-        using var directory = CheckedHandle(LibC.openat(-100, trustedPath, 0x10000 | 0x80000, 0)); Sync(directory);
+        using var directory = CheckedHandle(LibC.openat(-100, trustedPath, LinuxOpenFlags.Directory | LinuxOpenFlags.CloseOnExec, 0)); Sync(directory);
     }
     public static FileStamp Stamp(SafeFileHandle f)
     {
