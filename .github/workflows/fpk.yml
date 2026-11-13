@@ -28,22 +28,26 @@ jobs:
     steps:
       - name: Install build tools
         run: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates curl clang zlib1g-dev libssl-dev libicu70 btrfs-progs e2fsprogs util-linux python3
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend run build
       - run: npm --prefix frontend test
       - name: Audit and compile backend
-        run: dotnet restore backend/DuplicateCleanup.csproj --locked-mode && dotnet build backend/DuplicateCleanup.csproj -c Release --no-restore
+        run: |
+          cp backend/packages.lock.json /tmp/duplicate-common-lock.json
+          dotnet restore backend/DuplicateCleanup.csproj -r '${{ matrix.rid }}' --force-evaluate
+          python3 scripts/verify_nuget_lock.py /tmp/duplicate-common-lock.json backend/packages.lock.json
+          dotnet build backend/DuplicateCleanup.csproj -c Release -r '${{ matrix.rid }}' --no-restore
       - name: Publish real AOT tests
         run: |
           dotnet publish tests/Tests.csproj -c Release -r '${{ matrix.rid }}' -o /tmp/duplicate-aot-tests
@@ -66,7 +70,7 @@ jobs:
           if [[ ! "$RELEASE_TAG" =~ ^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9]+)?$ ]]; then exit 1; fi
           echo "APP_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
       - run: node scripts/build_fpk.mjs '${{ matrix.arch }}' '.build/${{ matrix.arch }}'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: duplicate-cleanup-${{ matrix.arch }}
           path: dist_fpk/*
