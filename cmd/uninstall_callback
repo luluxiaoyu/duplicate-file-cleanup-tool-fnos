@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+# App Center owns the application data retention choice. External files remain untouched.
+exit 0

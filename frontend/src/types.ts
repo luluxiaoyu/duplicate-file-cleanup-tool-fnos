@@ -1,0 +1,10 @@
+export interface FileSystem { type: string; identity: string; mountId: number; subvolumeId: number; readOnly: boolean; btrfs: boolean; hardlinkCandidate: boolean; reason: string | null }
+export interface Folder { path: string; displayPath: string; fileSystem: FileSystem | null; error: string | null }
+export interface Space { fileSystemId: string; beforeAvailable: number; afterAvailable: number | null; delayedAvailable: number | null; beforeAt: string; afterAt: string | null; delayedAt: string | null; error: string | null }
+export interface Job { id: string; kind: string; state: string; stage: string; createdAt: string; updatedAt: string; scanId: string | null; method: string | null; discovered: number; processed: number; total: number | null; currentBytes: number; currentTotal: number; logicalBytes: number; mergedBytes: number; alreadySharedBytes: number; estimatedSavedBytes: number; estimateComplete: boolean; trashBytes: number; errors: number; error: string | null; space: Space[] }
+export interface FileView { id: number; displayPath: string; size: number; links: number; sharing: string; sharedBytes: number; exclusiveBytes: number | null; fileSystem: FileSystem | null; reason: string | null }
+export interface Group { id: number; keeperId: number; count: number; size: number; files: FileView[]; nextFileId: number; hasMoreFiles: boolean; pageAfter?: number }
+export interface Choice { groupId: number; keeperId: number; fileIds: number[] | null; exclude: boolean; excludedFileIds?: number[] }
+export interface Cleanup { scanId: string; method: string; allGroups: boolean; choices: Choice[]; priorityRoots: string[]; confirmed: boolean; idempotencyKey: string }
+export interface Preview { files: number; logicalBytes: number; alreadySharedBytes: number; estimatedSavedBytes: number; estimateComplete: boolean; unavailable: number; reasons: string[] }
+export interface TrashItem { taskId: string; operationId: string; displayPath: string; size: number; state: string; error: string | null }

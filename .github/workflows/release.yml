@@ -1,0 +1,41 @@
+name: Release · Publish FPK
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: fpk-release-${{ github.ref }}
+jobs:
+  build:
+    if: ${{ !github.event.deleted }}
+    uses: ./.github/workflows/fpk.yml
+    with:
+      tag: ${{ github.ref_name }}
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: duplicate-cleanup-*
+          merge-multiple: true
+          path: dist_fpk
+      - name: Publish both architectures
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          amd64=(dist_fpk/*_amd64.fpk)
+          arm64=(dist_fpk/*_arm64.fpk)
+          if [[ ${#amd64[@]} != 1 || ${#arm64[@]} != 1 ]]; then exit 1; fi
+          if gh release view -- "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload --clobber -- "$RELEASE_TAG" dist_fpk/*
+          else
+            gh release create --verify-tag --generate-notes -- "$RELEASE_TAG" dist_fpk/*
+          fi

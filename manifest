@@ -1,0 +1,14 @@
+appname=duplicate-file-cleanup-tool-fnos
+version=0.1.0
+display_name=重复文件清理小工具
+desc=扫描完整内容相同的重复文件，识别已有硬链接和共享区块，提供Btrfs区块合并、应用回收站、永久删除和硬链接替换，并记录后台任务及空间统计。
+platform=x86
+source=thirdparty
+maintainer=小宇
+maintainer_url=https://github.com/luluxiaoyu
+desktop_uidir=ui
+desktop_applaunchname=duplicate-file-cleanup-tool-fnos.main
+micro_app=true
+os_min_version=1.2.0401
+ctl_stop=true
+checkport=false

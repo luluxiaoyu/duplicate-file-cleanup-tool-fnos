@@ -1,0 +1,56 @@
+#!/bin/sh
+set -eu
+umask 077
+: "${TRIM_APPDEST:?}" "${TRIM_PKGVAR:?}"
+binary="$TRIM_APPDEST/bin/duplicate-cleanup"
+pid_file="$TRIM_PKGVAR/server.pid"
+ready_file="$TRIM_PKGVAR/server.ready"
+log_file="$TRIM_PKGVAR/server.log"
+mkdir -p "$TRIM_PKGVAR"
+exec 9>"$TRIM_PKGVAR/control.lock"
+flock -x 9
+report() {
+    printf '%s\n' "$1" >&2
+    if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then printf '%s\n' "$1" >> "$TRIM_TEMP_LOGFILE"; fi
+}
+running() {
+    pid=
+    [ -f "$pid_file" ] && IFS= read -r pid < "$pid_file" || return 1
+    case "$pid" in ''|*[!0-9]*|0|1) return 1 ;; esac
+    [ "/proc/$pid/exe" -ef "$binary" ] && kill -0 "$pid" 2>/dev/null
+}
+ready() {
+    running && [ -S "$TRIM_APPDEST/app.sock" ] && [ -f "$ready_file" ] &&
+        [ "$(cat "$ready_file" 2>/dev/null)" = "$pid" ]
+}
+case "${1:-}" in
+    start)
+        if ready; then exit 0; fi
+        if running; then report "清理工具服务正在启动"; exit 1; fi
+        rm -f "$pid_file" "$ready_file"
+        # Bound the diagnostic log without touching task records.
+        if [ -f "$log_file" ] && [ "$(wc -c < "$log_file")" -gt 5242880 ]; then mv -f "$log_file" "$log_file.previous"; fi
+        nohup "$binary" 9>&- </dev/null >>"$log_file" 2>&1 &
+        child=$!
+        printf '%s\n' "$child" > "$pid_file"
+        count=0
+        while [ "$count" -lt 150 ]; do
+            if ready; then exit 0; fi
+            if ! kill -0 "$child" 2>/dev/null; then break; fi
+            count=$((count + 1)); sleep 0.2
+        done
+        if running; then kill -TERM "$pid" 2>/dev/null || :; fi
+        report "清理工具启动失败，请检查应用日志和数据目录权限"; exit 1
+        ;;
+    stop)
+        if running; then
+            kill -TERM "$pid" 2>/dev/null || :
+            count=0
+            while running && [ "$count" -lt 150 ]; do count=$((count + 1)); sleep 0.2; done
+            if running; then report "仍在等待文件操作安全停止，请稍后重试"; exit 1; fi
+        fi
+        rm -f "$pid_file" "$ready_file" "$TRIM_APPDEST/app.sock"
+        ;;
+    status) if ready; then exit 0; fi; exit 3 ;;
+    *) exit 1 ;;
+esac

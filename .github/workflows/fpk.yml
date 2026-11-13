@@ -1,0 +1,73 @@
+name: Build and verify fnOS packages
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        default: ''
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: amd64
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            rid: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    # A fixed older glibc baseline prevents the host runner upgrade from silently raising the
+    # NAS runtime requirement. Docker is used for CI compilation only, never by the installed app.
+    container:
+      image: ubuntu:22.04
+      options: --privileged
+    steps:
+      - name: Install build tools
+        run: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates curl clang zlib1g-dev libssl-dev libicu70 btrfs-progs e2fsprogs util-linux python3
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run build
+      - run: npm --prefix frontend test
+      - name: Audit and compile backend
+        run: dotnet restore backend/DuplicateCleanup.csproj --locked-mode && dotnet build backend/DuplicateCleanup.csproj -c Release --no-restore
+      - name: Publish real AOT tests
+        run: |
+          dotnet publish tests/Tests.csproj -c Release -r '${{ matrix.rid }}' -o /tmp/duplicate-aot-tests
+          chmod -R a+rX /tmp/duplicate-aot-tests
+      - name: Run as unprivileged user on ext4 and Btrfs
+        run: bash scripts/linux-integration.sh /tmp/duplicate-aot-tests
+      - name: Publish AOT daemon
+        run: |
+          dotnet publish backend/DuplicateCleanup.csproj -c Release -r '${{ matrix.rid }}' -o '.build/${{ matrix.arch }}'
+          ldd '.build/${{ matrix.arch }}/duplicate-cleanup'
+          ldd '.build/${{ matrix.arch }}/libe_sqlite3.so'
+      - name: Smoke-test the actual daemon without NAS privileges
+        run: bash scripts/service-smoke.sh '.build/${{ matrix.arch }}' frontend/dist
+      - name: Apply release version
+        if: inputs.tag != ''
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9]+)?$ ]]; then exit 1; fi
+          echo "APP_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
+      - run: node scripts/build_fpk.mjs '${{ matrix.arch }}' '.build/${{ matrix.arch }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: duplicate-cleanup-${{ matrix.arch }}
+          path: dist_fpk/*
+          if-no-files-found: error

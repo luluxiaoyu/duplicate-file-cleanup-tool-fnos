@@ -1,0 +1,30 @@
+{
+  "name": "duplicate-file-cleanup-tool-fnos-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "check": "vue-tsc --noEmit",
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "vitest run src",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@trimjs/web-app": "0.6.0",
+    "pinia": "^3.0.3",
+    "vue": "^3.5.22",
+    "vue-router": "^4.6.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/node": "^22.20.5",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "tailwindcss": "^4.1.14",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.12",
+    "vitest": "^5.1.0",
+    "vue-tsc": "^3.1.0"
+  }
+}
